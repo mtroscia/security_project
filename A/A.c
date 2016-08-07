@@ -206,9 +206,9 @@ int open_file(unsigned char** plaintext_buf,const char* send_file_name, int* sen
    	}
 
 
-   	fseek(file, 0, SEEK_END);   //mi posiziono in fondo al byte
-   	*send_file_size = ftell(file); //posizione corrente
-   	fseek(file, 0, SEEK_SET); //ritorno all'inizio
+   	fseek(file, 0, SEEK_END);  
+   	*send_file_size = ftell(file); 
+   	fseek(file, 0, SEEK_SET); 
 
 	*plaintext_buf = (unsigned char*)malloc(*send_file_size+1);
    	ret = fread(*plaintext_buf, 1, *send_file_size, file);
@@ -226,11 +226,10 @@ int open_file(unsigned char** plaintext_buf,const char* send_file_name, int* sen
 
 int send_document(const char* send_file_name, const char* key_file_name)
 {
-   	//FILE* file;
    	int send_file_size;
 
     	const EVP_CIPHER* cipher = EVP_des_cbc();
-   	EVP_CIPHER_CTX* ctx;    // contesto
+   	EVP_CIPHER_CTX* ctx;   
 
 	int symmetric_key_size=EVP_CIPHER_key_length(cipher);
 	unsigned char* symmetric_key= malloc(symmetric_key_size);
@@ -346,6 +345,7 @@ int ask_key(char** argv)
 		return 1;
 	}
 	
+	//RECEIVING M3 T->A
 	ret = recv_buffer(sk, &my_msg, &my_msg_len);
 	if (ret==1)
 	{
@@ -369,7 +369,7 @@ int ask_key(char** argv)
 	}
 
 	ctx = (EVP_CIPHER_CTX*)malloc(sizeof(EVP_CIPHER_CTX));
-	EVP_CIPHER_CTX_init(ctx);	//context init
+	EVP_CIPHER_CTX_init(ctx);	
 	ret = EVP_DecryptInit(ctx, cipher, (unsigned char*)key, NULL);
 	if (ret == 0)
 	{
@@ -387,8 +387,7 @@ int ask_key(char** argv)
 		return 1;
 	}
 
-
-	//check on message received
+	//checks on received message
 	if (plaintext[0]!=*other_par[0])
 	{
 		printf("Error in the protocol!\n");
@@ -428,34 +427,14 @@ int ask_key(char** argv)
 	fclose(file);
 	printf("Key received and saved locally...\n"); 
 
-	/*ret = remove("KeyAB");
-	if (ret==-1)
-	{
-		printf("Error in deleting the file...\n");
-		return 1;
-	}*/
-
 	return 0;
 }
 
 int manage_client(int argn, char* args[])
 {
-	int ret;      /* Returns from functions */
+	int ret;     
 
    	struct sockaddr_in srv_addr;      /* Server address */
-
-	// controlli sugli argomenti
-   	if(argn != 3)
-	{
-      		printf ("Address or port number are not correct!\n");
-      		return 1;
-   	}
-
-   	if(atoi(args[2]) <1024 || atoi(args[2]) > 65535) 
-	{
-      		printf ("Port number is not valid\n");
-      		return 1;
-   	}
 
    	cl_port = atoi(args[2]);
 
@@ -470,7 +449,7 @@ int manage_client(int argn, char* args[])
   	}
 
 
-	//connessione
+	//connection
    	sk = socket(AF_INET, SOCK_STREAM, 0);
    	if(sk == -1) 
 	{
@@ -493,34 +472,59 @@ int manage_client(int argn, char* args[])
 int main(int argc, char*argv[]) 
 {
 	int ret;
-	char* file_name; //nome dal file che contiene il testo da inviare
-	char* key_file_name;//nome dal file che contiene la chiave
+	char* file_name; //file containing the text to send
+	char* key_file_name;	//file containing the key
 	char* app;
 	char other;
+	FILE* file;
+	char* all_zero;
+	const EVP_CIPHER* cipher = EVP_des_cbc();
+	int key_size = EVP_CIPHER_key_length(cipher);
 
-	//char* other_par[2];
+	//check on arguments
+   	if(argc != 3)
+	{
+      		printf ("Wrong number of arguments\n");
+		printf ("Usage: ./<my_name> <T_address> <T port>\n\n");
+      		return 1;
+   	}
+
+   	if(atoi(argv[2])<1024 || atoi(argv[2])>65535) 
+	{
+      		printf ("Port number is not a valid one\n");
+		printf ("It should be greater than 1024 and less than 65535\n");
+      		return 1;
+   	}
+
 	printf("\nInsert the user you want to talk to:\t");
 	scanf("%c", &other);
 	other_par[0] = &other;
-	printf("Address:\t\t\t\t");
+	printf("Its address:\t\t\t\t");
 	other_par[1] = malloc(16);
 	scanf("%s", other_par[1]);
-	printf("Port:\t\t\t\t\t");
+	printf("Its port:\t\t\t\t");
 	other_par[2] = malloc(6);
 	scanf("%s", other_par[2]);
 	printf("\n\n");
 
+	if(atoi(other_par[2])<1024 || atoi(other_par[2])>65535)
+	{
+      		printf ("Port number is not a valid one\n");
+		printf ("It should be greater than 1024 and less than 65535\n");
+      		return 1;
+   	}
+
 	ret = manage_client(argc, argv);
 	if (ret==1)
 	{
-		printf("Error managing the connection with T...");
+		printf("Error while connecting with T...");
 		return 1;
 	}
 
 	ret = ask_key(argv);
 	if (ret==1)
 	{
-		printf("Error in asking the key...\n");
+		printf("Error in asking the key to talk with %c...\n", other_par[0][0]);
 		return 1;
 	}
 
@@ -529,7 +533,7 @@ int main(int argc, char*argv[])
 	ret = manage_client(3, other_par);
 	if (ret==1)
 	{
-		printf("Error on connection with %s\n", other_par[0][0]);
+		printf("Error on connection with %c\n", other_par[0][0]);
 		return 1;
 	}
 
@@ -537,12 +541,12 @@ int main(int argc, char*argv[])
 	ret = send_buffer(sk, oth_msg, oth_msg_len);
 	if (ret==1)
 	{
-		printf("Error in sending the message to B...\n");
+		printf("Error in sending the message to %c...\n", other_par[0][0]);
 		return 1;
 	}
 
     	file_name=malloc(30);
-    	printf("Insert the name of the file to send:\t");
+    	printf("Insert the name of the file to send to %c:\t", other_par[0][0]);
     	scanf("%s", file_name);
 
 	key_file_name=malloc(5);
@@ -552,13 +556,40 @@ int main(int argc, char*argv[])
 	memcpy(key_file_name+3, &app[2], 1);		
 	memcpy(key_file_name+4, &other_par[0][0], 1);
 
+	//send file encrypted with symmetric key
 	ret = send_document(file_name, key_file_name);
    	if(ret != 0)
 	{
-     		printf("\nError in sending the document to %s...\n", other_par[0]);
+     		printf("\nError in sending the document to %c...\n", other_par[0]);
       		return 1;
 	}
 	printf("\n");
+	
+	//reset the key and delete the key file
+	file = fopen(key_file_name, "w");
+	if (file==NULL)
+	{
+		printf("Error in opening the file of the symmetric key...\n");
+		return 1;
+	}
+	rewind(file);
+	all_zero = malloc(key_size);
+	all_zero = "00000000";
+	ret = fwrite(all_zero, 1, key_size, file);
+	if (ret<key_size)
+	{
+		printf("Error in resetting the key file...\n");
+		return 1;
+	}
+	fclose(file);
+	
+	ret = remove(key_file_name);
+	if (ret==-1)
+	{
+		printf("Error in deleting the file...\n");
+		return 1;
+	}
+	printf("All done! Closing...\n");
 
    	return 0;
 }

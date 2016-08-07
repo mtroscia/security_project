@@ -5,6 +5,7 @@
 #include <sys/socket.h>
 #include <openssl/evp.h>
 #include <time.h>
+#include <sys/stat.h>
 
 #define SA struct sockaddr
 #define BACKLOG_SIZE 64
@@ -103,7 +104,7 @@ int retrieve_key(char* key,int key_len, char* file_name)
 	file=fopen(file_name,"r");
 	if (file==NULL)
 	{
-		printf("Errore sull'apertura del file (%s)...\n", file_name);
+		printf("Error opening the file...\n", file_name);
 		return 1;
 	}
 
@@ -119,22 +120,8 @@ int retrieve_key(char* key,int key_len, char* file_name)
 }
 
 
-int manage_server(int argc, char*argv[])
+int manage_server(int argc, char* argv[])
 {
-    //controlli sui parametri
-
-	if(argc != 2)
-	{
-     	 	printf("Port number is not correct!\n ");
-      		return 1;
-   	}
-
-   	if(atoi(argv[1]) < 1024 || atoi(argv[1]) > 65535)
-	{
-      		printf("Port number is not valid\n");
-      		return 1;
-   	}
-
    	srv_port = atoi(argv[1]);
 
    	memset(&srv_addr, 0, sizeof(srv_addr));
@@ -147,7 +134,6 @@ int manage_server(int argc, char*argv[])
       		return 1;
    	}
 
-// creazione del socket
    	sk = socket(AF_INET, SOCK_STREAM, 0);
    	if(sk == -1)
 	{
@@ -220,7 +206,7 @@ int save_document(unsigned char* plaintext, int plaintext_size, char* name)
     	}
     	plaintext[plaintext_size] = '\0';
 
-    	printf("Text written in file \"%s\"\n\n", name);
+    	printf("Text written in file \"/%s\"\n\n", name);
 
     	fclose(file);
 
@@ -252,10 +238,28 @@ int main(int argc, char*argv[])
 	char* key2_file;
 	char* key12_file;
 	char* symmetric_key;
+	char* all_zero;
 	EVP_CIPHER_CTX* ctx;
 	const EVP_CIPHER* cipher = EVP_des_cbc();
 
 	FILE* file;
+
+	struct stat info;
+	struct tm* timestr;
+
+	if(argc != 2)
+	{
+     	 	printf("Arguments number is not correct!\n ");
+		printf("Usage: ./<my name> <my port>\n");
+      		return 1;
+   	}
+
+   	if(atoi(argv[1])<1024 || atoi(argv[1])>65535)
+	{
+      		printf("Port number is not a valid one\n");
+		printf ("It should be greater than 1024 and less than 65535\n");
+      		return 1;
+   	}
 
    	printf("\nServer is active on port %d\n",atoi(argv[1]));
 
@@ -273,7 +277,7 @@ int main(int argc, char*argv[])
 		ret = recv_buffer(cl_sk, &my_msg, &my_msg_len);
         	if (ret==1)
         	{
-        	    	printf("M3 not received\n");
+        	    	printf("Error in receiving the message...\n");
 			close(cl_sk);
         	    	continue;
         	}
@@ -296,7 +300,7 @@ int main(int argc, char*argv[])
 		}
 
 		ctx = (EVP_CIPHER_CTX*)malloc(sizeof(EVP_CIPHER_CTX));
-		EVP_CIPHER_CTX_init(ctx);	//context init
+		EVP_CIPHER_CTX_init(ctx);	
 		ret = EVP_DecryptInit(ctx, cipher, (unsigned char*)key, NULL);
 		if (ret == 0)
 		{
@@ -366,7 +370,6 @@ int main(int argc, char*argv[])
 		}
 		fclose(file);
 		printf("Key received and saved locally...\n"); 
-
 	
 		//Receiving the ciphertext		
 		ret = recv_buffer(cl_sk, &ciphertext, &ciphertext_len);
@@ -407,8 +410,59 @@ int main(int argc, char*argv[])
 
         	printf("Plaintext obtained correctly...\n");
 
-       		file_name="output.txt";
+		file_name = malloc(27);
+		memcpy(file_name, &other, 1);
+		memcpy(file_name+1, "\0", 1);
+
+		if (stat(file_name, &info) == -1)
+		{
+			ret = mkdir(file_name, 0700);
+			if (ret==-1)
+			{
+				printf("Error in creating the directory...\n");
+				return 1;
+			}
+		}
+
+		tick = time(NULL);
+		timestr = localtime(&tick);
+	
+		ret = sprintf(app, "/%c_%04d%02d%02d_%02d%02d%02d.txt", other, (timestr->tm_year)+1900, (timestr->tm_mon)+1, timestr->tm_mday, timestr->tm_hour, timestr->tm_min, timestr->tm_sec);
+		if (ret==-1)
+		{
+			printf("Error in formatting the file name...\n");
+			return 1;
+		}
+
+		memcpy(file_name+1, app, strlen(app));
+		memcpy(file_name+1+strlen(app), "\0", 1);
+
         	ret=save_document(plaintext, plaintext_len, file_name);
+
+		//reset the key and delete the key file
+		file = fopen(key12_file, "w");
+		if (file==NULL)
+		{
+			printf("Error in opening the file of the symmetric key...\n");
+			return 1;
+		}
+		rewind(file);
+		all_zero = malloc(key_size);
+		all_zero = "00000000";
+		ret = fwrite(all_zero, 1, key_size, file);
+		if (ret<key_size)
+		{
+			printf("Error in resetting the key file...\n");
+			return 1;
+		}
+		fclose(file);
+	
+		ret = remove(key12_file);
+		if (ret==-1)
+		{
+			printf("Error in deleting the file...\n");
+			return 1;
+		}
 	}
 
    	return 0;

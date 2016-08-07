@@ -369,9 +369,9 @@ int send_key(sk)
 
 int manage_server(int argc, char*argv[])
 {
-//controlli sui parametri
 	int i;
 
+	//checks on arguments
 	if(argc != 2) 
 	{
      	 	printf("Port number is not correct!\n ");
@@ -400,7 +400,6 @@ int manage_server(int argc, char*argv[])
       		return -1;
    	}
 
-// creazione del socket
    	sk = socket(AF_INET, SOCK_STREAM, 0);
    	if(sk == -1) 
 	{
